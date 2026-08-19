@@ -1,12 +1,12 @@
 import {
     initializeApp
-} from "https://www.gstatic.com/firebasejs/12.17.0/firebase-app.js";
+} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
 
 import {
     getAuth,
     signInAnonymously,
     onAuthStateChanged
-} from "https://www.gstatic.com/firebasejs/12.17.0/firebase-auth.js";
+} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 
 import {
     getFirestore,
@@ -15,54 +15,47 @@ import {
     setDoc,
     getDoc,
     addDoc,
-    onSnapshot,
     updateDoc,
+    onSnapshot,
     deleteDoc
-} from "https://www.gstatic.com/firebasejs/12.17.0/firebase-firestore.js";
+} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
 import {
     firebaseConfig
 } from "./firebase-config.js";
 
 
-/* --------------------------------------------------
+/* ================================
    FIREBASE
--------------------------------------------------- */
+================================ */
 
-const app = initializeApp(firebaseConfig);
+const firebaseApp = initializeApp(firebaseConfig);
 
-const auth = getAuth(app);
+const auth = getAuth(firebaseApp);
 
-const db = getFirestore(app);
+const db = getFirestore(firebaseApp);
 
 
-/* --------------------------------------------------
-   WEBRTC
--------------------------------------------------- */
+/* ================================
+   STATE
+================================ */
+
+let currentUser = null;
+let authReady = false;
 
 let localStream = null;
-
 let remoteStream = null;
-
 let peerConnection = null;
 
 let roomId = null;
-
 let roomRef = null;
-
-let callerCandidatesUnsubscribe = null;
-
-let calleeCandidatesUnsubscribe = null;
 
 let remoteDescriptionSet = false;
 
 
-/*
- * Google's public STUN servers.
- *
- * STUN allows the browsers to discover their
- * public network address.
- */
+/* ================================
+   WEBRTC
+================================ */
 
 const rtcConfiguration = {
 
@@ -81,9 +74,9 @@ const rtcConfiguration = {
 };
 
 
-/* --------------------------------------------------
+/* ================================
    DOM
--------------------------------------------------- */
+================================ */
 
 const localVideo =
     document.getElementById("localVideo");
@@ -131,25 +124,20 @@ const toast =
     document.getElementById("toast");
 
 
-/* --------------------------------------------------
-   UTILITY
--------------------------------------------------- */
+/* ================================
+   STATUS
+================================ */
 
-function showToast(message) {
+function setStatus(message) {
 
-    toast.textContent = message;
+    connectionStatus.textContent = message;
 
-    toast.classList.add("show");
-
-    setTimeout(() => {
-
-        toast.classList.remove("show");
-
-    }, 2500);
 }
 
 
 function showError(message) {
+
+    console.error(message);
 
     welcomeError.textContent = message;
 
@@ -163,26 +151,121 @@ function clearError() {
 }
 
 
+function showToast(message) {
+
+    toast.textContent = message;
+
+    toast.classList.add("show");
+
+    setTimeout(() => {
+
+        toast.classList.remove("show");
+
+    }, 2500);
+
+}
+
+
+/* ================================
+   AUTHENTICATION
+================================ */
+
+const authReadyPromise = new Promise(
+    (resolve, reject) => {
+
+        const unsubscribe =
+            onAuthStateChanged(
+                auth,
+                async user => {
+
+                    if (user) {
+
+                        currentUser = user;
+
+                        authReady = true;
+
+                        console.log(
+                            "Firebase authenticated:",
+                            user.uid
+                        );
+
+                        setStatus(
+                            "Ready"
+                        );
+
+                        unsubscribe();
+
+                        resolve(user);
+
+                        return;
+
+                    }
+
+
+                    try {
+
+                        console.log(
+                            "Signing in anonymously..."
+                        );
+
+                        await signInAnonymously(
+                            auth
+                        );
+
+                    } catch (error) {
+
+                        console.error(
+                            "Anonymous authentication failed:",
+                            error
+                        );
+
+                        showError(
+                            "Firebase authentication failed. " +
+                            error.message
+                        );
+
+                        reject(error);
+
+                    }
+
+                }
+            );
+
+    }
+);
+
+
+/* ================================
+   GENERATE ROOM
+================================ */
+
 function generateRoomId() {
 
-    return Math.random()
-        .toString(36)
-        .substring(2, 8)
-        .toUpperCase();
+    const chars =
+        "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+    let result = "";
+
+    for (let i = 0; i < 6; i++) {
+
+        result +=
+            chars.charAt(
+                Math.floor(
+                    Math.random() *
+                    chars.length
+                )
+            );
+
+    }
+
+    return result;
 
 }
 
 
-function updateStatus(text) {
-
-    connectionStatus.textContent = text;
-
-}
-
-
-/* --------------------------------------------------
-   CAMERA / MICROPHONE
--------------------------------------------------- */
+/* ================================
+   CAMERA
+================================ */
 
 async function startLocalMedia() {
 
@@ -192,35 +275,87 @@ async function startLocalMedia() {
 
     }
 
+
+    if (
+        !navigator.mediaDevices ||
+        !navigator.mediaDevices.getUserMedia
+    ) {
+
+        throw new Error(
+            "Your browser does not allow camera access. Make sure you are using the HTTPS GitHub Pages address."
+        );
+
+    }
+
+
     try {
 
         localStream =
-            await navigator.mediaDevices.getUserMedia({
+            await navigator.mediaDevices
+                .getUserMedia({
 
-                video: {
-                    width: {
-                        ideal: 1280
+                    video: {
+                        width: {
+                            ideal: 1280
+                        },
+
+                        height: {
+                            ideal: 720
+                        }
                     },
 
-                    height: {
-                        ideal: 720
-                    }
-                },
+                    audio: true
 
-                audio: true
+                });
 
-            });
 
-        localVideo.srcObject = localStream;
+        localVideo.srcObject =
+            localStream;
+
+
+        console.log(
+            "Camera and microphone started"
+        );
+
 
         return localStream;
 
+
     } catch (error) {
 
-        console.error(error);
+        console.error(
+            "Camera error:",
+            error
+        );
+
+
+        if (
+            error.name ===
+            "NotAllowedError"
+        ) {
+
+            throw new Error(
+                "Camera/microphone permission was denied. Please allow access and try again."
+            );
+
+        }
+
+
+        if (
+            error.name ===
+            "NotFoundError"
+        ) {
+
+            throw new Error(
+                "No camera or microphone was found."
+            );
+
+        }
+
 
         throw new Error(
-            "Camera or microphone permission was denied."
+            "Unable to access your camera or microphone: " +
+            error.message
         );
 
     }
@@ -228,11 +363,16 @@ async function startLocalMedia() {
 }
 
 
-/* --------------------------------------------------
-   CREATE PEER CONNECTION
--------------------------------------------------- */
+/* ================================
+   PEER CONNECTION
+================================ */
 
 function createPeerConnection() {
+
+    console.log(
+        "Creating WebRTC connection..."
+    );
+
 
     peerConnection =
         new RTCPeerConnection(
@@ -243,12 +383,13 @@ function createPeerConnection() {
     remoteStream =
         new MediaStream();
 
+
     remoteVideo.srcObject =
         remoteStream;
 
 
     /*
-     * Add local tracks.
+     * Local tracks
      */
 
     localStream
@@ -264,101 +405,151 @@ function createPeerConnection() {
 
 
     /*
-     * Receive remote tracks.
+     * Remote tracks
      */
 
-    peerConnection.ontrack = event => {
+    peerConnection.ontrack =
+        event => {
 
-        event.streams[0]
-            .getTracks()
-            .forEach(track => {
-
-                remoteStream.addTrack(track);
-
-            });
-
-        remotePlaceholder
-            .classList.add("hidden");
-
-    };
-
-
-    /*
-     * ICE candidates.
-     */
-
-    peerConnection.onicecandidate =
-        async event => {
-
-            if (!event.candidate) {
-                return;
-            }
-
-            if (!roomRef) {
-                return;
-            }
-
-
-            const candidatesCollection =
-                collection(
-                    roomRef,
-                    "candidates"
-                );
-
-
-            await addDoc(
-                candidatesCollection,
-                {
-                    candidate:
-                        event.candidate.toJSON(),
-
-                    sender:
-                        auth.currentUser.uid
-                }
+            console.log(
+                "Received remote track"
             );
+
+
+            event.streams[0]
+                .getTracks()
+                .forEach(track => {
+
+                    remoteStream.addTrack(
+                        track
+                    );
+
+                });
+
+
+            remotePlaceholder
+                .classList.add(
+                    "hidden"
+                );
 
         };
 
 
     /*
-     * Connection state.
+     * ICE candidates
      */
 
-    peerConnection.onconnectionstatechange =
+    peerConnection.onicecandidate =
+        async event => {
+
+            if (
+                !event.candidate ||
+                !roomRef ||
+                !currentUser
+            ) {
+
+                return;
+
+            }
+
+
+            try {
+
+                await addDoc(
+
+                    collection(
+                        roomRef,
+                        "candidates"
+                    ),
+
+                    {
+                        candidate:
+                            event.candidate.toJSON(),
+
+                        sender:
+                            currentUser.uid,
+
+                        createdAt:
+                            Date.now()
+                    }
+
+                );
+
+            } catch (error) {
+
+                console.error(
+                    "ICE candidate error:",
+                    error
+                );
+
+            }
+
+        };
+
+
+    /*
+     * Connection status
+     */
+
+    peerConnection
+        .onconnectionstatechange =
         () => {
 
+            const state =
+                peerConnection
+                    .connectionState;
+
+
             console.log(
-                "Connection:",
-                peerConnection.connectionState
+                "WebRTC state:",
+                state
             );
 
 
             if (
-                peerConnection.connectionState ===
+                state ===
                 "connected"
             ) {
 
-                updateStatus("Connected");
+                setStatus(
+                    "Connected"
+                );
 
             }
 
 
             if (
-                peerConnection.connectionState ===
+                state ===
+                "connecting"
+            ) {
+
+                setStatus(
+                    "Connecting..."
+                );
+
+            }
+
+
+            if (
+                state ===
                 "disconnected"
             ) {
 
-                updateStatus("Disconnected");
+                setStatus(
+                    "Disconnected"
+                );
 
             }
 
 
             if (
-                peerConnection.connectionState ===
+                state ===
                 "failed"
             ) {
 
-                updateStatus("Connection failed");
+                setStatus(
+                    "Connection failed"
+                );
 
             }
 
@@ -370,22 +561,159 @@ function createPeerConnection() {
 }
 
 
-/* --------------------------------------------------
+/* ================================
+   LISTEN FOR ICE
+================================ */
+
+function listenForCandidates() {
+
+    if (
+        !roomRef ||
+        !currentUser
+    ) {
+
+        return;
+
+    }
+
+
+    const candidates =
+        collection(
+            roomRef,
+            "candidates"
+        );
+
+
+    onSnapshot(
+        candidates,
+        snapshot => {
+
+            snapshot.docChanges()
+                .forEach(async change => {
+
+                    if (
+                        change.type !==
+                        "added"
+                    ) {
+
+                        return;
+
+                    }
+
+
+                    const data =
+                        change.doc.data();
+
+
+                    /*
+                     * Ignore our own ICE.
+                     */
+
+                    if (
+                        data.sender ===
+                        currentUser.uid
+                    ) {
+
+                        return;
+
+                    }
+
+
+                    if (
+                        !peerConnection ||
+                        !remoteDescriptionSet
+                    ) {
+
+                        return;
+
+                    }
+
+
+                    try {
+
+                        await peerConnection
+                            .addIceCandidate(
+
+                                new RTCIceCandidate(
+                                    data.candidate
+                                )
+
+                            );
+
+                    } catch (error) {
+
+                        console.error(
+                            "Unable to add ICE candidate:",
+                            error
+                        );
+
+                    }
+
+                });
+
+        }
+    );
+
+}
+
+
+/* ================================
    CREATE ROOM
--------------------------------------------------- */
+================================ */
 
 async function createRoom() {
 
     clearError();
 
+
     try {
+
+        /*
+         * IMPORTANT:
+         * Wait for Firebase authentication.
+         */
+
+        await authReadyPromise;
+
+
+        if (!currentUser) {
+
+            throw new Error(
+                "Firebase authentication is not ready."
+            );
+
+        }
+
+
+        console.log(
+            "Creating room..."
+        );
+
+
+        /*
+         * Request camera.
+         */
 
         await startLocalMedia();
 
 
+        /*
+         * Generate room ID.
+         */
+
         roomId =
             generateRoomId();
 
+
+        console.log(
+            "Room ID:",
+            roomId
+        );
+
+
+        /*
+         * Firebase room reference.
+         */
 
         roomRef =
             doc(
@@ -395,30 +723,41 @@ async function createRoom() {
             );
 
 
+        /*
+         * Create WebRTC.
+         */
+
         createPeerConnection();
 
 
         /*
-         * Create an empty room.
+         * Create room.
          */
 
         await setDoc(
             roomRef,
             {
+
                 createdAt:
-                    new Date().toISOString(),
+                    Date.now(),
 
                 createdBy:
-                    auth.currentUser.uid,
+                    currentUser.uid,
 
                 status:
                     "waiting"
+
             }
         );
 
 
+        console.log(
+            "Firestore room created"
+        );
+
+
         /*
-         * Create WebRTC offer.
+         * Create offer.
          */
 
         const offer =
@@ -427,23 +766,45 @@ async function createRoom() {
 
 
         await peerConnection
-            .setLocalDescription(offer);
+            .setLocalDescription(
+                offer
+            );
 
 
-        await updateDoc(
-            roomRef,
-            {
-                offer: {
-                    type: offer.type,
-
-                    sdp: offer.sdp
-                }
-            }
+        console.log(
+            "WebRTC offer created"
         );
 
 
         /*
-         * Listen for the answer.
+         * Save offer.
+         */
+
+        await updateDoc(
+            roomRef,
+            {
+
+                offer: {
+
+                    type:
+                        offer.type,
+
+                    sdp:
+                        offer.sdp
+
+                }
+
+            }
+        );
+
+
+        console.log(
+            "Offer saved to Firebase"
+        );
+
+
+        /*
+         * Watch room for answer.
          */
 
         onSnapshot(
@@ -455,7 +816,9 @@ async function createRoom() {
 
 
                 if (!data) {
+
                     return;
+
                 }
 
 
@@ -464,17 +827,26 @@ async function createRoom() {
                     !remoteDescriptionSet
                 ) {
 
+                    console.log(
+                        "Received answer"
+                    );
+
+
                     await peerConnection
                         .setRemoteDescription(
+
                             new RTCSessionDescription(
                                 data.answer
                             )
+
                         );
+
 
                     remoteDescriptionSet =
                         true;
 
-                    updateStatus(
+
+                    setStatus(
                         "Connecting..."
                     );
 
@@ -485,25 +857,78 @@ async function createRoom() {
 
 
         /*
-         * Listen for incoming ICE candidates.
+         * Watch ICE.
          */
 
-        listenForCandidates(
-            roomRef,
-            auth.currentUser.uid
+        listenForCandidates();
+
+
+        /*
+         * Show room.
+         */
+
+        welcomePanel
+            .classList.add(
+                "hidden"
+            );
+
+
+        roomLabel.textContent =
+            `Room: ${roomId}`;
+
+
+        setStatus(
+            "Waiting for someone..."
         );
 
 
-        showRoom();
-
         showToast(
-            "Room created. Send the link!"
+            "Room created!"
+        );
+
+
+        /*
+         * Put room into URL.
+         */
+
+        const newUrl =
+            `${window.location.pathname}?room=${roomId}`;
+
+
+        window.history
+            .replaceState(
+                {},
+                "",
+                newUrl
+            );
+
+
+        console.log(
+            "ROOM READY:",
+            roomId
         );
 
 
     } catch (error) {
 
-        console.error(error);
+        console.error(
+            "CREATE ROOM FAILED:",
+            error
+        );
+
+
+        /*
+         * Clean up if creation failed.
+         */
+
+        if (peerConnection) {
+
+            peerConnection.close();
+
+            peerConnection = null;
+
+        }
+
 
         showError(
             error.message ||
@@ -515,33 +940,43 @@ async function createRoom() {
 }
 
 
-/* --------------------------------------------------
+/* ================================
    JOIN ROOM
--------------------------------------------------- */
+================================ */
 
 async function joinRoom() {
 
     clearError();
 
 
-    const enteredRoom =
-        roomInput.value
-            .trim()
-            .toUpperCase();
-
-
-    if (!enteredRoom) {
-
-        showError(
-            "Enter a room code."
-        );
-
-        return;
-
-    }
-
-
     try {
+
+        await authReadyPromise;
+
+
+        if (!currentUser) {
+
+            throw new Error(
+                "Firebase authentication is not ready."
+            );
+
+        }
+
+
+        const enteredRoom =
+            roomInput.value
+                .trim()
+                .toUpperCase();
+
+
+        if (!enteredRoom) {
+
+            throw new Error(
+                "Please enter a room code."
+            );
+
+        }
+
 
         await startLocalMedia();
 
@@ -558,11 +993,13 @@ async function joinRoom() {
             );
 
 
-        const roomSnapshot =
-            await getDoc(roomRef);
+        const snapshot =
+            await getDoc(
+                roomRef
+            );
 
 
-        if (!roomSnapshot.exists()) {
+        if (!snapshot.exists()) {
 
             throw new Error(
                 "That room does not exist."
@@ -572,13 +1009,13 @@ async function joinRoom() {
 
 
         const roomData =
-            roomSnapshot.data();
+            snapshot.data();
 
 
         if (!roomData.offer) {
 
             throw new Error(
-                "This room is not ready yet."
+                "That room is not ready yet."
             );
 
         }
@@ -588,14 +1025,16 @@ async function joinRoom() {
 
 
         /*
-         * Set the caller's offer.
+         * Apply offer.
          */
 
         await peerConnection
             .setRemoteDescription(
+
                 new RTCSessionDescription(
                     roomData.offer
                 )
+
             );
 
 
@@ -613,41 +1052,66 @@ async function joinRoom() {
 
 
         await peerConnection
-            .setLocalDescription(answer);
+            .setLocalDescription(
+                answer
+            );
 
+
+        /*
+         * Save answer.
+         */
 
         await updateDoc(
             roomRef,
             {
-                answer: {
-                    type: answer.type,
 
-                    sdp: answer.sdp
+                answer: {
+
+                    type:
+                        answer.type,
+
+                    sdp:
+                        answer.sdp
+
                 },
 
                 status:
                     "connected"
+
             }
         );
 
 
-        listenForCandidates(
-            roomRef,
-            auth.currentUser.uid
+        listenForCandidates();
+
+
+        welcomePanel
+            .classList.add(
+                "hidden"
+            );
+
+
+        roomLabel.textContent =
+            `Room: ${roomId}`;
+
+
+        setStatus(
+            "Connecting..."
         );
 
 
-        showRoom();
-
-
-        updateStatus(
-            "Connecting..."
+        showToast(
+            "Joined room!"
         );
 
 
     } catch (error) {
 
-        console.error(error);
+        console.error(
+            "JOIN ROOM FAILED:",
+            error
+        );
+
 
         showError(
             error.message ||
@@ -659,118 +1123,9 @@ async function joinRoom() {
 }
 
 
-/* --------------------------------------------------
-   ICE CANDIDATES
--------------------------------------------------- */
-
-function listenForCandidates(
-    room,
-    currentUserId
-) {
-
-    const candidates =
-        collection(
-            room,
-            "candidates"
-        );
-
-
-    const unsubscribe =
-        onSnapshot(
-            candidates,
-            snapshot => {
-
-                snapshot.docChanges()
-                    .forEach(async change => {
-
-                        if (
-                            change.type !==
-                            "added"
-                        ) {
-
-                            return;
-
-                        }
-
-
-                        const data =
-                            change.doc.data();
-
-
-                        /*
-                         * Ignore our own candidates.
-                         */
-
-                        if (
-                            data.sender ===
-                            currentUserId
-                        ) {
-
-                            return;
-
-                        }
-
-
-                        if (
-                            peerConnection &&
-                            remoteDescriptionSet
-                        ) {
-
-                            try {
-
-                                await peerConnection
-                                    .addIceCandidate(
-                                        new RTCIceCandidate(
-                                            data.candidate
-                                        )
-                                    );
-
-                            } catch (error) {
-
-                                console.error(
-                                    "ICE error:",
-                                    error
-                                );
-
-                            }
-
-                        }
-
-                    });
-
-            }
-        );
-
-
-    return unsubscribe;
-
-}
-
-
-/* --------------------------------------------------
-   SHOW ROOM
--------------------------------------------------- */
-
-function showRoom() {
-
-    welcomePanel
-        .classList.add("hidden");
-
-
-    roomLabel.textContent =
-        `Room: ${roomId}`;
-
-
-    updateStatus(
-        "Waiting for connection..."
-    );
-
-}
-
-
-/* --------------------------------------------------
+/* ================================
    COPY LINK
--------------------------------------------------- */
+================================ */
 
 copyRoomButton
     .addEventListener(
@@ -784,23 +1139,25 @@ copyRoomButton
             }
 
 
-            const url =
+            const link =
                 `${window.location.origin}${window.location.pathname}?room=${roomId}`;
 
 
             try {
 
                 await navigator.clipboard
-                    .writeText(url);
+                    .writeText(link);
+
 
                 showToast(
                     "Room link copied!"
                 );
 
+
             } catch {
 
                 showToast(
-                    "Copy failed."
+                    "Unable to copy link."
                 );
 
             }
@@ -809,9 +1166,9 @@ copyRoomButton
     );
 
 
-/* --------------------------------------------------
+/* ================================
    MICROPHONE
--------------------------------------------------- */
+================================ */
 
 micButton
     .addEventListener(
@@ -819,15 +1176,18 @@ micButton
         () => {
 
             if (!localStream) {
+
                 return;
+
             }
 
 
-            const audioTracks =
-                localStream.getAudioTracks();
+            const tracks =
+                localStream
+                    .getAudioTracks();
 
 
-            audioTracks.forEach(track => {
+            tracks.forEach(track => {
 
                 track.enabled =
                     !track.enabled;
@@ -836,19 +1196,21 @@ micButton
 
 
             const enabled =
-                audioTracks[0]?.enabled;
+                tracks[0]?.enabled;
 
 
             micButton.textContent =
-                enabled ? "🎤" : "🔇";
+                enabled
+                    ? "🎤"
+                    : "🔇";
 
         }
     );
 
 
-/* --------------------------------------------------
+/* ================================
    CAMERA
--------------------------------------------------- */
+================================ */
 
 cameraButton
     .addEventListener(
@@ -856,15 +1218,18 @@ cameraButton
         () => {
 
             if (!localStream) {
+
                 return;
+
             }
 
 
-            const videoTracks =
-                localStream.getVideoTracks();
+            const tracks =
+                localStream
+                    .getVideoTracks();
 
 
-            videoTracks.forEach(track => {
+            tracks.forEach(track => {
 
                 track.enabled =
                     !track.enabled;
@@ -873,125 +1238,121 @@ cameraButton
 
 
             const enabled =
-                videoTracks[0]?.enabled;
+                tracks[0]?.enabled;
 
 
             cameraButton.textContent =
-                enabled ? "📹" : "🚫";
+                enabled
+                    ? "📹"
+                    : "🚫";
 
         }
     );
 
 
-/* --------------------------------------------------
+/* ================================
    HANG UP
--------------------------------------------------- */
+================================ */
 
 hangupButton
     .addEventListener(
         "click",
         async () => {
 
-            await leaveRoom();
+            if (peerConnection) {
 
-        }
-    );
+                peerConnection.close();
 
+                peerConnection = null;
 
-async function leaveRoom() {
-
-    if (peerConnection) {
-
-        peerConnection.close();
-
-        peerConnection = null;
-
-    }
+            }
 
 
-    if (localStream) {
+            if (localStream) {
 
-        localStream
-            .getTracks()
-            .forEach(track => {
+                localStream
+                    .getTracks()
+                    .forEach(track => {
 
-                track.stop();
+                        track.stop();
 
-            });
+                    });
 
-        localStream = null;
+                localStream = null;
 
-    }
-
-
-    if (remoteStream) {
-
-        remoteStream
-            .getTracks()
-            .forEach(track => {
-
-                track.stop();
-
-            });
-
-        remoteStream = null;
-
-    }
+            }
 
 
-    /*
-     * Remove room.
-     */
+            if (roomRef) {
 
-    if (roomRef) {
+                try {
 
-        try {
+                    await deleteDoc(
+                        roomRef
+                    );
 
-            await deleteDoc(roomRef);
+                } catch (error) {
 
-        } catch (error) {
+                    console.log(
+                        "Room cleanup:",
+                        error
+                    );
 
-            console.log(
-                "Room cleanup:",
-                error
+                }
+
+            }
+
+
+            localVideo.srcObject =
+                null;
+
+            remoteVideo.srcObject =
+                null;
+
+
+            remotePlaceholder
+                .classList
+                .remove("hidden");
+
+
+            roomId =
+                null;
+
+            roomRef =
+                null;
+
+            remoteDescriptionSet =
+                false;
+
+
+            roomLabel.textContent =
+                "No room";
+
+
+            setStatus(
+                "Ready"
             );
 
+
+            welcomePanel
+                .classList
+                .remove("hidden");
+
+
+            window.history
+                .replaceState(
+                    {},
+                    "",
+                    window.location.pathname
+                );
+
         }
-
-    }
-
-
-    roomId = null;
-
-    roomRef = null;
-
-    remoteVideo.srcObject = null;
-
-    localVideo.srcObject = null;
-
-
-    remotePlaceholder
-        .classList.remove("hidden");
-
-
-    welcomePanel
-        .classList.remove("hidden");
-
-
-    roomLabel.textContent =
-        "No room";
-
-
-    updateStatus(
-        "Not connected"
     );
 
-}
 
-
-/* --------------------------------------------------
-   BUTTON EVENTS
--------------------------------------------------- */
+/* ================================
+   BUTTONS
+================================ */
 
 createRoomButton
     .addEventListener(
@@ -1025,9 +1386,9 @@ roomInput
     );
 
 
-/* --------------------------------------------------
-   AUTO JOIN FROM URL
--------------------------------------------------- */
+/* ================================
+   AUTO JOIN
+================================ */
 
 function getRoomFromUrl() {
 
@@ -1036,59 +1397,45 @@ function getRoomFromUrl() {
             window.location.search
         );
 
-    return params.get("room");
+    return params.get(
+        "room"
+    );
 
 }
 
 
-/* --------------------------------------------------
-   FIREBASE AUTH
--------------------------------------------------- */
-
-onAuthStateChanged(
-    auth,
-    async user => {
-
-        if (user) {
-
-            console.log(
-                "Authenticated:",
-                user.uid
-            );
+getRoomFromUrl();
 
 
-            const urlRoom =
-                getRoomFromUrl();
+/* ================================
+   STARTUP
+================================ */
+
+authReadyPromise
+    .then(() => {
+
+        const urlRoom =
+            getRoomFromUrl();
 
 
-            if (urlRoom) {
+        if (urlRoom) {
 
-                roomInput.value =
-                    urlRoom
-                        .toUpperCase();
-
-            }
-
-            return;
+            roomInput.value =
+                urlRoom.toUpperCase();
 
         }
 
 
-        try {
+        console.log(
+            "VIDEO CHAT READY"
+        );
 
-            await signInAnonymously(
-                auth
-            );
+    })
+    .catch(error => {
 
-        } catch (error) {
+        console.error(
+            "Startup failed:",
+            error
+        );
 
-            console.error(error);
-
-            showError(
-                "Unable to connect to Firebase."
-            );
-
-        }
-
-    }
-);
+    });
