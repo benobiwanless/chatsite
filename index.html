@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Simple Video Chat</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <div class="app">
+
+        <!-- HEADER -->
+        <header class="topbar">
+
+            <div class="brand">
+                <div class="brand-icon">VC</div>
+
+                <div>
+                    <h1>Video Chat</h1>
+                    <span id="connectionStatus">Not connected</span>
+                </div>
+            </div>
+
+            <div class="room-info">
+
+                <span id="roomLabel">No room</span>
+
+                <button id="copyRoomButton" class="secondary-button">
+                    Copy Link
+                </button>
+
+            </div>
+
+        </header>
+
+
+        <!-- MAIN VIDEO AREA -->
+        <main class="video-area">
+
+            <div class="video-grid">
+
+                <!-- REMOTE VIDEO -->
+                <div class="video-container remote-container">
+
+                    <video
+                        id="remoteVideo"
+                        autoplay
+                        playsinline
+                    ></video>
+
+                    <div
+                        id="remotePlaceholder"
+                        class="video-placeholder"
+                    >
+                        <div class="avatar">?</div>
+                        <span>Waiting for someone...</span>
+                    </div>
+
+                    <div class="video-label">
+                        <span id="remoteName">Guest</span>
+                    </div>
+
+                </div>
+
+
+                <!-- LOCAL VIDEO -->
+                <div class="video-container local-container">
+
+                    <video
+                        id="localVideo"
+                        autoplay
+                        muted
+                        playsinline
+                    ></video>
+
+                    <div class="video-label">
+                        You
+                    </div>
+
+                </div>
+
+            </div>
+
+        </main>
+
+
+        <!-- WELCOME / ROOM PANEL -->
+        <div id="welcomePanel" class="modal-overlay">
+
+            <div class="welcome-card">
+
+                <div class="welcome-icon">
+                    📹
+                </div>
+
+                <h2>Simple Video Chat</h2>
+
+                <p>
+                    Create a private room and send the link
+                    to another person.
+                </p>
+
+                <button
+                    id="createRoomButton"
+                    class="primary-button"
+                >
+                    Create Room
+                </button>
+
+                <div class="divider">
+                    <span>OR</span>
+                </div>
+
+                <div class="join-area">
+
+                    <input
+                        id="roomInput"
+                        type="text"
+                        placeholder="Enter room code"
+                        maxlength="20"
+                    >
+
+                    <button
+                        id="joinRoomButton"
+                        class="secondary-button"
+                    >
+                        Join Room
+                    </button>
+
+                </div>
+
+                <p id="welcomeError" class="error"></p>
+
+            </div>
+
+        </div>
+
+
+        <!-- CONTROLS -->
+        <div class="controls">
+
+            <button
+                id="micButton"
+                class="control-button"
+                title="Mute microphone"
+            >
+                🎤
+            </button>
+
+            <button
+                id="cameraButton"
+                class="control-button"
+                title="Turn camera off"
+            >
+                📹
+            </button>
+
+            <button
+                id="hangupButton"
+                class="control-button hangup"
+                title="Leave call"
+            >
+                ☎
+            </button>
+
+        </div>
+
+
+        <!-- STATUS MESSAGE -->
+        <div id="toast" class="toast"></div>
+
+    </div>
+
+
+    <!-- Firebase -->
+    <script type="module" src="app.js"></script>
+
+</body>
+</html>
